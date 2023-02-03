@@ -66,7 +66,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
   mapping(address => uint256) internal _balances;
 
   // Mapping from (tokenHolder, spender) to allowed value.
-  mapping (address => mapping (address => uint256)) internal _allowed;
+  mapping (address => mapping (address => uint256)) internal _allowed; // The mapping "_allowed[from][msg.sender]" is a state variable in the ERC1400 contract that stores the allowance granted by the "from" address to the "msg.sender" address. It is used to keep track of the amount of tokens that the "msg.sender" address is allowed to transfer on behalf of the "from" address.
   /************************************************************************************************/
 
 
@@ -77,11 +77,11 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     uint256 timestamp;
   }
   // Mapping for documents.
-  mapping(bytes32 => Doc) internal _documents;
-  mapping(bytes32 => uint256) internal _indexOfDocHashes;
-  bytes32[] internal _docHashes;
+  mapping(bytes32 => Doc) internal _documents; // [hash bytes32] => Doc object: mapping that associates a document with its hash. The hash of a document is used as the key to access the document's information.
+  mapping(bytes32 => uint256) internal _indexOfDocHashes; // [hash bytes32] => uint256 index: mapping that associates a document hash with its index in the _docHashes array.
+  bytes32[] internal _docHashes; // is an array that stores the hash bytes32 of the documents in the contract.
   /************************************************************************************************/
-
+  3 Key R/S (1 is Link R/S) for Documents: Hash->DocObj, Hash->IndexofDocHashes, DocHashes Array
 
   /*********************************** Partitions  mappings ***************************************/
   // List of partitions.
@@ -109,31 +109,46 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
 
   /********************************* Global operators mappings ************************************/
   // Mapping from (operator, tokenHolder) to authorized status. [TOKEN-HOLDER-SPECIFIC]
-  mapping(address => mapping(address => bool)) internal _authorizedOperator;
-
+  mapping(address => mapping(address => bool)) internal _authorizedOperator; 
+  // 2D mapping [operator][tokenHolder] => bool true/false
+  // The mapping takes two addresses, the first one is the address of the operator and the second one is the address of the token holder. The mapping returns a boolean value indicating whether the operator is authorized to perform actions on behalf of the token holder or not.
+  // It is specific to each token holder and stored on a per-token holder basis.
+  
   // Array of controllers. [GLOBAL - NOT TOKEN-HOLDER-SPECIFIC]
-  address[] internal _controllers;
+  address[] internal _controllers; 
+  //  array, on the other hand, is a list of addresses that have the ability to control the behavior of the smart contract.
 
   // Mapping from operator to controller status. [GLOBAL - NOT TOKEN-HOLDER-SPECIFIC]
-  mapping(address => bool) internal _isController;
+  mapping(address => bool) internal _isController; 
+  // mapping is used to determine if a given address is a controller or not. The mapping takes an address as its key and returns a boolean value indicating whether the address is a controller or not.
   /************************************************************************************************/
-
+  3 Key R/S for global (not partition specific): Operator->TokenHolder->Yes/No Authorized, Array of controller addresses, Address->Yes/No Controller
 
   /******************************** Partition operators mappings **********************************/
   // Mapping from (partition, tokenHolder, spender) to allowed value. [TOKEN-HOLDER-SPECIFIC]
-  mapping(bytes32 => mapping (address => mapping (address => uint256))) internal _allowedByPartition;
-
+  mapping(bytes32 => mapping (address => mapping (address => uint256))) internal _allowedByPartition; 
+  // 3D mapping: [bytes32 partition][address tokenHolder][address Spender (from tokenHolder)] => uint256 value
+  // for a given partition identifier of type 'bytes32', and for a given 'tokenHolder' address, for a given delegated 'spender' address can transfer ONLY, uint256 value of tokens on tokenHolder behalf. 
+  
   // Mapping from (tokenHolder, partition, operator) to 'approved for partition' status. [TOKEN-HOLDER-SPECIFIC]
-  mapping (address => mapping (bytes32 => mapping (address => bool))) internal _authorizedOperatorByPartition;
-
+  mapping (address => mapping (bytes32 => mapping (address => bool))) internal _authorizedOperatorByPartition; 
+  // 3D mapping: [address tokenHolder][bytes32 partition][address operator] => bool true/false
+  // where _authorizedOperatorByPartition stores information about operator authorization for a specific partition, _allowedByPartition stores information about the allowed transfer amount for a specific partition
+  
   // Mapping from partition to controllers for the partition. [NOT TOKEN-HOLDER-SPECIFIC]
   mapping (bytes32 => address[]) internal _controllersByPartition;
-
+  // mapping from [bytes32 partition] => array of address of controllers 
+  
   // Mapping from (partition, operator) to PartitionController status. [NOT TOKEN-HOLDER-SPECIFIC]
   mapping (bytes32 => mapping (address => bool)) internal _isControllerByPartition;
+  // mapping from [bytes32 partition][operator address] => bool true/false 
+  // checking whether the operator is a controller for the partition
   /************************************************************************************************/
-
-
+  // 4 Key R/S: Partition->TokenHolder->Operator->Value Allowed, TokenHolder->Partition->Operator->Yes/No Allowed, Partition -> Array of allowed controller addresses, Partition -> Operator -> Yes/No Controller
+  
+  // An "operator" in the context of an ERC-1400 smart contract is a role that has been granted specific permissions to perform specific actions on behalf of the token holder. In this case, the operator has been authorized to act on behalf of the token holder with regards to certain partitions of tokens.
+  // A "controller", on the other hand, is a more general role that has broader permissions within the context of the ERC-1400 smart contract. Controllers have the ability to perform a wider range of actions, such as adding or removing partitions, and granting or revoking operator status to other addresses.
+  // So, the difference between an operator and a controller is one of scope and permission. An operator has limited permissions specific to a particular partition of tokens, while a controller has broader permissions within the overall context of the ERC-1400 smart contract.
   /***************************************** Modifiers ********************************************/
   /**
    * @dev Modifier to verify if token is issuable.
@@ -263,8 +278,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function transferFrom(address from, address to, uint256 value) external override returns (bool) {
     require( _isOperator(msg.sender, from)
-      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
-
+      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance 
     if(_allowed[from][msg.sender] >= value) {
       _allowed[from][msg.sender] = _allowed[from][msg.sender].sub(value);
     } else {
@@ -293,35 +307,35 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
       _documents[documentName].docURI,
       _documents[documentName].docHash,
       _documents[documentName].timestamp
-    );
+    ); // This function retrieves a document's content, hash, and timestamp based on its name.
   }
   /**
    * @dev Associate a document with the token.
-   * @param documentName Short name (represented as a bytes32) associated to the document.
-   * @param uri Document content.
-   * @param documentHash Hash of the document [optional parameter].
+   * @param documentName Short name (represented as a bytes32) associated to the document; unique identifier.
+   * @param uri location of the document in a decentralised storage or cloud.
+   * @param documentHash Hash of the documents content [optional parameter].
    */
   function setDocument(bytes32 documentName, string calldata uri, bytes32 documentHash) external override {
-    require(_isController[msg.sender]);
-    _documents[documentName] = Doc({
+    require(_isController[msg.sender]); //  The require statement requires that the address of the caller must be a key in the _isController mapping and have a value of true, otherwise the function will revert. 
+    _documents[documentName] = Doc({ // update the _documents mapping with the newly added document. The _documents mapping is used to store the documents added to the contract, and each document is stored as a struct Doc with the document's uri, hash, and timestamp.
       docURI: uri,
       docHash: documentHash,
       timestamp: block.timestamp
     });
 
-    if (_indexOfDocHashes[documentHash] == 0) {
+    if (_indexOfDocHashes[documentHash] == 0) { // The following block of code checks if the hash of the newly added document already exists in the _indexOfDocHashes mapping. If it does not exist, the hash is added to the _docHashes array and the _indexOfDocHashes mapping is updated to store the index of the newly added hash.
       _docHashes.push(documentHash);
       _indexOfDocHashes[documentHash] = _docHashes.length;
     }
 
-    emit DocumentUpdated(documentName, uri, documentHash);
+    emit DocumentUpdated(documentName, uri, documentHash); // the emit DocumentUpdated(documentName, uri, documentHash) line emits an event, DocumentUpdated, to notify other parties of the update to the documents stored in the contract.
   }
 
   function removeDocument(bytes32 documentName) external override {
-    require(_isController[msg.sender], "Unauthorized");
+    require(_isController[msg.sender], "Unauthorized"); //  function checks if the msg.sender is an authorized controller, with the line require(_isController[msg.sender], "Unauthorized");. If the sender is not authorized, the transaction will be invalidated and the error message "Unauthorized" will be thrown.
     require(bytes(_documents[documentName].docURI).length != 0, "Document doesnt exist"); // Action Blocked - Empty document
 
-    Doc memory data = _documents[documentName];
+    Doc memory data = _documents[documentName]; 
 
     uint256 index1 = _indexOfDocHashes[data.docHash];
     require(index1 > 0, "Invalid index"); //Indexing starts at 1, 0 is not allowed
@@ -329,15 +343,15 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
     // move the last item into the index being vacated
     bytes32 lastValue = _docHashes[_docHashes.length - 1];
     _docHashes[index1 - 1] = lastValue; // adjust for 1-based indexing
-    _indexOfDocHashes[lastValue] = index1;
+    _indexOfDocHashes[lastValue] = index1; //  updates the index mapping to reflect the removal of the document hash from the array.
 
-    //_totalPartitions.length -= 1;
+    //_totalPartitions.length -= 1; // remove the document hash from the _docHashes array and the mapping _indexOfDocHashes
     _docHashes.pop();
     _indexOfDocHashes[data.docHash] = 0;
 
-    delete _documents[documentName];
+    delete _documents[documentName]; //  deletes the document data stored in the _documents mapping for the given document name
 
-    emit DocumentRemoved(documentName, data.docURI, data.docHash);
+    emit DocumentRemoved(documentName, data.docURI, data.docHash); // emits the DocumentRemoved event to log the removal of the document.
   }
 
   function getAllDocuments() external override view returns (bytes32[] memory) {
@@ -386,7 +400,7 @@ contract ERC1400 is IERC20, IERC1400, Ownable, ERC1820Client, ERC1820Implementer
    */
   function transferFromWithData(address from, address to, uint256 value, bytes calldata data) external override virtual {
     require( _isOperator(msg.sender, from)
-      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance
+      || (value <= _allowed[from][msg.sender]), "53"); // 0x53	insufficient allowance // requires that either msg.sender is an authorized operator for from (as checked by _isOperator function), or the value of the transfer value is less than or equal to the allowed amount in the mapping _allowed[from][msg.sender].
 
     if(_allowed[from][msg.sender] >= value) {
       _allowed[from][msg.sender] = _allowed[from][msg.sender].sub(value);
